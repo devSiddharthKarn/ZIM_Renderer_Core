@@ -34,6 +34,26 @@ namespace zim
         this->pImpl_KeyQueue = new KeyQueue::Impl_KeyQueue();
     }
 
+    KeyQueue::KeyQueue(const KeyQueue &other)
+    {
+        this->pImpl_KeyQueue = new KeyQueue::Impl_KeyQueue();
+        this->pImpl_KeyQueue->keyStates = other.pImpl_KeyQueue->keyStates;
+        this->pImpl_KeyQueue->remaining = other.pImpl_KeyQueue->remaining;
+    }
+
+    KeyQueue &KeyQueue::operator=(const KeyQueue &other)
+    {
+        if (this == &other)
+        {
+            return *this;
+        }
+
+        this->pImpl_KeyQueue->keyStates = other.pImpl_KeyQueue->keyStates;
+        this->pImpl_KeyQueue->remaining = other.pImpl_KeyQueue->remaining;
+
+        return *this;
+    }
+
     KeyState KeyQueue::Get()
     {
         if (this->pImpl_KeyQueue->remaining == 0)

@@ -153,6 +153,10 @@ namespace zim
     public:
         KeyQueue();
 
+        KeyQueue(const KeyQueue& other);
+
+        KeyQueue& operator=(const KeyQueue& other);
+
         KeyState Get();
 
         void Put(KeyState key);

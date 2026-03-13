@@ -2,8 +2,18 @@
 #define WINDOW_CPP
 
 #include "Window.hpp"
-
+#if defined(_WIN32) || defined(_WIN64)
 #include "windows.h"
+#elif defined(__linux__)
+#include "stdio.h"
+#include "sys/termios.h"
+#include "fcntl.h"
+
+#else
+#error "Unsupported Platform"
+#endif
+
+
 
 #include "iostream"
 #include "fstream"
