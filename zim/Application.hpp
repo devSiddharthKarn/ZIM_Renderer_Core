@@ -57,6 +57,8 @@ namespace zim
 
         Element* FindElementById(std::string id);
 
+        Logic RemoveElementById(const std::string& id);
+
         void ReadyForWindowContext(Window& windowContext);
 
         ~Element();

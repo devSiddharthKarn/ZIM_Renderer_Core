@@ -179,6 +179,34 @@ namespace zim
         return nullptr;
     }
 
+    Logic Element::RemoveElementById(const std::string &id)
+    {
+
+        auto &children = this->pImpl_Element->children;
+
+        if (children.size() == 0)
+            return Logic::False;
+
+        for (size_t i = 0; i < children.size(); i++)
+        {
+            Element *child = children[i];
+
+            if (child->Id() == id)
+            {
+                children.erase(children.begin() + i);
+                return Logic::True;
+            }
+        }
+
+        for (Element *child : children)
+        {
+            if (child->RemoveElementById(id) == Logic::True)
+                return Logic::True;
+        }
+
+        return Logic::False;
+    }
+
     Element::~Element()
     {
         if (this->pImpl_Element)
