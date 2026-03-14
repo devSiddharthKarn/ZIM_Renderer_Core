@@ -2,6 +2,7 @@
 #include "vector"
 #include "unordered_map"
 
+
 namespace zim
 {
 
@@ -12,6 +13,7 @@ namespace zim
         ElementLayoutHandler layoutHandler;
         Logic active;
         std::string id = "";
+        uint32_t zIndex = 1;
 
         EventListener eventListener;
 
@@ -144,13 +146,13 @@ namespace zim
         {
             this->pImpl_Element->panel.Retrace();
 
-            if (this->pImpl_Element->children.size() > 0)
-            {
-                for (Element *child : this->pImpl_Element->children)
-                {
-                    child->Render();
-                }
-            }
+            // if (this->pImpl_Element->children.size() > 0)
+            // {
+            //     for (Element *child : this->pImpl_Element->children)
+            //     {
+            //         child->Render();
+            //     }
+            // }
         }
     }
 
@@ -158,6 +160,23 @@ namespace zim
     {
         return this->pImpl_Element->id;
     }
+
+    uint32_t &Element::ZIndex()
+    {
+        return this->pImpl_Element->zIndex;
+    }
+
+    void Element::GetElementsFromThisNode(std::vector<Element *> &elementsReturned)
+    {
+        elementsReturned.push_back(this);
+        if (this->pImpl_Element->children.size() > 0)
+        {
+            for (Element *child : this->pImpl_Element->children)
+            {
+                child->GetElementsFromThisNode(elementsReturned);
+            }
+        }
+    };
 
     Element *Element::FindElementById(std::string id)
     {
@@ -221,6 +240,8 @@ namespace zim
         Window window;
         Element document;
 
+        std::vector<Element *> elements;
+
         Impl_Application(PointDetail windowBufferBaseDetail) : window(windowBufferBaseDetail)
         {
 
@@ -241,8 +262,30 @@ namespace zim
                                                 { This.Dimension() = this->GetWindow().GetDimensions(); });
 
         this->GetDocument().Id() = "document";
+        this->GetDocument().ZIndex() =0;
 
         // this->pImpl_Impl_Application->document.Panel.
+    }
+
+    void Application::TraverseAndFindGetElements()
+    {
+        Impl_Application *app = this->pImpl_Application;
+        app->elements.clear();
+        app->document.GetElementsFromThisNode(app->elements);
+
+        for (int i = 0; i < app->elements.size(); i++)
+        {
+            for (int j = i+1; j < app->elements.size(); j++)
+            {
+                Element *i_Element = app->elements[i];
+                Element *j_Element = app->elements[j];
+
+                if (i_Element->ZIndex() > j_Element->ZIndex())
+                {
+                    std::swap(app->elements[i], app->elements[j]);
+                }
+            }
+        }
     }
 
     void Application::Render()
@@ -266,7 +309,13 @@ namespace zim
 
         this->UpdateLayout();
 
-        this->pImpl_Application->document.Render();
+        // this->pImpl_Application->document.Render();
+
+        this->TraverseAndFindGetElements();
+
+        for(Element* element:this->pImpl_Application->elements){
+            element->Render();
+        }
 
         this->pImpl_Application->window.Render();
     }
@@ -294,6 +343,8 @@ namespace zim
         Element parent;
 
         parent.GetPanel().SetPadding(0);
+
+        parent.ZIndex()=UINT32_MAX;
 
         parent.Dimension() = ref_window.GetDimensions();
 

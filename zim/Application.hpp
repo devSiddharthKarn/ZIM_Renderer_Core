@@ -6,6 +6,7 @@
 #include "Types.hpp"
 #include "Window.hpp"
 #include "Panel.hpp"
+#include "cstdint"
 
 #include "functional"
 
@@ -43,17 +44,17 @@ namespace zim
 
         Vector2D &Position();
 
-        // void SetPosition(Vector2D position);
-
         Vector2D &Dimension();
-
-        // void SetDimension(Vector2D dimension);
 
         void ClearBuffers();
 
         void Render();
 
         std::string& Id();
+
+        uint32_t& ZIndex();
+
+        void GetElementsFromThisNode(std::vector<Element*>& elementsReturned);
 
         Element* FindElementById(std::string id);
 
@@ -72,6 +73,7 @@ namespace zim
 
         void Ready();
         void UpdateLayout();
+        void TraverseAndFindGetElements();
         void Render();
     public:
         Application();
