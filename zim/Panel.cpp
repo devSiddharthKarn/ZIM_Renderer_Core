@@ -59,8 +59,14 @@ namespace zim
         int height = this->pImpl_Panel->dimension.y;
         int pad = this->pImpl_Panel->padding;
 
+        if (width <= 0 || height <= 0)
+            return;
+
         std::string title_displayed;
-        int width_available = width;
+        int width_available = width - 2;
+
+        if (width_available < 0)
+            width_available = 0;
 
         int title_len = this->pImpl_Panel->title.sentence.length();
 
@@ -88,9 +94,9 @@ namespace zim
             for (int j = 0; j < width; j++)
             {
 
-                if (j < title_displayed.length() && i == 0)
+                if (i == 0 && j > 0 && j < width - 1 && j - 1 < title_displayed.length())
                 {
-                    this->pImpl_Panel->window->SetPointDetail(MakeVector2D(this->pImpl_Panel->position.x + j, this->pImpl_Panel->position.y + i), MakePointDetail(title_displayed[j], MakeStyle(this->pImpl_Panel->title.styles.bg_color, this->pImpl_Panel->title.styles.fg_color, this->pImpl_Panel->title.styles.overloadStyle)));
+                    this->pImpl_Panel->window->SetPointDetail(MakeVector2D(this->pImpl_Panel->position.x + j, this->pImpl_Panel->position.y + i), MakePointDetail(title_displayed[j - 1], MakeStyle(this->pImpl_Panel->title.styles.bg_color, this->pImpl_Panel->title.styles.fg_color, this->pImpl_Panel->title.styles.overloadStyle)));
                 }
                 else
                 {
@@ -104,12 +110,7 @@ namespace zim
 
         if (this->pImpl_Panel->padding > 0)
         {
-
-            if (title_displayed.length() == 0)
-            {
-
-                this->pImpl_Panel->window->SetPointDetail(MakeVector2D(this->pImpl_Panel->position.x + 0, this->pImpl_Panel->position.y + 0), MakePointDetail(this->pImpl_Panel->top_left_corner_char, MakeStyle(this->pImpl_Panel->border_bg_color, this->pImpl_Panel->border_fg_color, OverloadStyle::None)));
-            }
+            this->pImpl_Panel->window->SetPointDetail(MakeVector2D(this->pImpl_Panel->position.x + 0, this->pImpl_Panel->position.y + 0), MakePointDetail(this->pImpl_Panel->top_left_corner_char, MakeStyle(this->pImpl_Panel->border_bg_color, this->pImpl_Panel->border_fg_color, OverloadStyle::None)));
 
             this->pImpl_Panel->window->SetPointDetail(MakeVector2D(this->pImpl_Panel->position.x + width - 1, this->pImpl_Panel->position.y + 0), MakePointDetail(this->pImpl_Panel->top_right_corner_char, MakeStyle(this->pImpl_Panel->border_bg_color, this->pImpl_Panel->border_fg_color, OverloadStyle::None)));
 

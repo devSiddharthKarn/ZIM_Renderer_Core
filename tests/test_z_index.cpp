@@ -6,8 +6,9 @@ int main()
     Application app;
 
     Element element1;
+    element1.GetPanel().Title().sentence="This is a sentence";
 
-    element1.Dimension() = MakeVector2D(10, 10);
+    element1.Dimension() = MakeVector2D(50, 10);
     element1.Position() = MakeVector2D(0, 0);
     element1.ZIndex() = 2;
 
@@ -18,7 +19,7 @@ int main()
     element2.ZIndex() = 1;
 
     app.GetDocument().AppendChildren(element1);
-    app.GetDocument().AppendChildren(element2);
+    // app.GetDocument().AppendChildren(element2);
 
     return app.Execute();
 }
