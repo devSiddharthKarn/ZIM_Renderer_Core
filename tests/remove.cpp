@@ -19,6 +19,8 @@ int main(){
         if(eventImage.eventOccuredLogic==Logic::True){
             if(eventImage.mouseEvent.keyPressed==MouseKey::Left){
                 document.RemoveElementById("element");
+            }else if(eventImage.mouseEvent.keyPressed==MouseKey::Right){
+                document.AppendChildren(element);
             }
         }
     });

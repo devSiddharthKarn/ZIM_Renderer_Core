@@ -146,11 +146,6 @@ namespace zim
         // this->RetraceBuffer();
     }
 
-    // void Panel::SetPosition()
-    // {
-    //     this->pImpl_Panel->position = position;
-    // }
-
     void Panel::RefreshBufferDimensions()
     {
 
