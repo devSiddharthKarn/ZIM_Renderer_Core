@@ -83,6 +83,10 @@ namespace zim
         Element &GetDocument();
 
         int Execute();
+        
+        void UnsafeQuit();
+
+        void SafeQuit();
 
         ~Application();
     };

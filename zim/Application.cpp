@@ -240,6 +240,8 @@ namespace zim
         Window window;
         Element document;
 
+        Logic appShouldQuitLogic=Logic::False;
+
         std::vector<Element *> elements;
 
         Impl_Application(PointDetail windowBufferBaseDetail) : window(windowBufferBaseDetail)
@@ -360,7 +362,10 @@ namespace zim
             this->Ready();
 
             while (true)
-            {
+            {   
+                if(this->pImpl_Application->appShouldQuitLogic==Logic::True){
+                    return 0;
+                }
                 this->Render();
             }
             return -1;
@@ -371,10 +376,13 @@ namespace zim
         }
     }
 
-    // Element *Application::FindElementById(std::string id)
-    // {
-    //     return this->pImpl_Application->document.FindElementById(id);
-    // }
+    void Application::UnsafeQuit(){
+        _exit(0);
+    }
+
+    void Application::SafeQuit(){
+        this->pImpl_Application->appShouldQuitLogic=Logic::True;
+    }
 
     Application::~Application()
     {
