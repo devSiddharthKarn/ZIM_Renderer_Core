@@ -757,6 +757,10 @@ namespace zim
         f.close();
     }
 
+    void Window::RestoreConfig(){
+        set_special_console_flags_win32(this->pImpl_Window->i_handle);
+    }
+
     Window::~Window()
     {
         if (this->pImpl_Window)

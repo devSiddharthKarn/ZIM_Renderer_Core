@@ -61,6 +61,8 @@ namespace zim
 
         void StoreCommandBuffer(std::string filename, Logic overWrite = Logic::False);
 
+        void RestoreConfig();   
+
         ~Window();
     };
 
