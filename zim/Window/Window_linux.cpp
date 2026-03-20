@@ -22,8 +22,13 @@ void enable_raw_mode(int fd)
 {
     tcgetattr(fd, &original);
     raw = original;
+    raw.c_cc[VMIN]=0;
+    raw.c_cc[VTIME]=0;
     raw.c_lflag &= ~(ICANON | ECHO);
     tcsetattr(fd, TCSANOW, &raw);
+
+    // int flags = fcntl(fd,F_GETFL,0);
+    // fcntl(fd,F_SETFL,flags|O_NONBLOCK);
 }
 
 void disable_raw_mode(int fd){
@@ -132,7 +137,7 @@ void CaptureInput(int fd, zim::EventImage &eventImage)
 
     char buf[256] = {0};
     int n = read(fd, buf, sizeof(buf) - 1);
-    ResetEventImage(eventImage);
+    // ResetEventImage(eventImage);
     if (n <= 0)
     {
         return;
@@ -608,35 +613,8 @@ namespace zim
 
     void Window::SoftClearBuffer()
     {
-
-#if defined(_WIN32) || defined(_WIN64)
-
-        CONSOLE_SCREEN_BUFFER_INFO csbi;
-        GetConsoleScreenBufferInfo(this->pImpl_Window->o_handle, &csbi);
-
-        COORD newSize;
-        newSize.X = csbi.srWindow.Right - csbi.srWindow.Left + 1;
-        newSize.Y = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
-        SetConsoleScreenBufferSize(this->pImpl_Window->o_handle, newSize);
-
-        int width = csbi.srWindow.Right - csbi.srWindow.Left + 1;
-        int height = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
-
-        SetConsoleScreenBufferSize(this->pImpl_Window->o_handle, newSize);
-
-        DWORD written;
-        COORD topLeft = {0, 0};
-        FillConsoleOutputCharacter(this->pImpl_Window->o_handle, ' ', newSize.X * newSize.Y, topLeft, &written);
-        FillConsoleOutputAttribute(this->pImpl_Window->o_handle, csbi.wAttributes, newSize.X * newSize.Y, topLeft, &written);
-
-        SetConsoleCursorPosition(this->pImpl_Window->o_handle, topLeft);
-
-#elif defined(__linux__)
         std::string buf = "\033[2J\033[H";
         write(STDOUT_FILENO, buf.c_str(), buf.length());
-#else
-#error "Unsupported Platform"
-#endif
     }
 
     void Window::HardClearBuffer()
@@ -644,13 +622,7 @@ namespace zim
 
         this->SoftClearBuffer();
 
-#if defined(_WIN32) || defined(_WIN64)
-        system("cls");
-#elif defined(__linux__)
         system("clear");
-#else
-#error "Unsupported Platform"
-#endif
     }
 
     void Window::CMDSetOverloadStyle(OverloadStyle style)
