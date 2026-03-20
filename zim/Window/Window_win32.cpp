@@ -1,26 +1,16 @@
 #ifndef WINDOW_CPP
 #define WINDOW_CPP
 
-#include "Window.hpp"
-#if defined(_WIN32) || defined(_WIN64)
+#include "../Window.hpp"
+
 #include "windows.h"
-#elif defined(__linux__)
-#include "stdio.h"
-#include "sys/termios.h"
-#include "fcntl.h"
-
-#else
-#error "Unsupported Platform"
-#endif
-
-
+#include <conio.h>
 
 #include "iostream"
 #include "fstream"
 #include "unordered_map"
 #include "queue"
 
-#if defined(_WIN32) || defined(_WIN64)
 void set_special_console_flags_win32(HANDLE inputHandle)
 {
 
@@ -36,11 +26,6 @@ void set_special_console_flags_win32(HANDLE inputHandle)
 
     SetConsoleMode(inputHandle, mode);
 }
-#elif defined(__linux__)
-
-#else
-#error "Unsupported Platform"
-#endif
 
 namespace zim
 {
@@ -48,15 +33,8 @@ namespace zim
     {
         std::string title;
 
-#if defined(_WIN32) || defined(_WIN64)
         HANDLE o_handle;
         HANDLE i_handle;
-#elif defined(__linux__)
-        int fd;
-        struct termios orig_termios;
-#else
-#error "Unsupported Platform"
-#endif
 
         Vector2D dimen;
 
@@ -65,66 +43,13 @@ namespace zim
         std::vector<PointDetail> frameBuffer;
 
         std::vector<INPUT_RECORD> input_records;
+
         EventImage event_image;
 
         std::string command_buffer;
 
         std::unordered_map<int, PointDetail> dirtyPoints;
     };
-
-#if defined(_WIN32) || defined(_WIN64)
-#include <conio.h>
-
-#elif defined(__linux__)
-#include "stdio.h"
-#include "unistd.h"
-#include "termios.h"
-#include "sys/ioctl.h"
-#include "sys/time.h"
-#include "sys/select.h"
-#include "fcntl.h"
-#else
-#error "Unknown Platform"
-#endif
-
-    // Logic PollKeyHitAsync()
-    // {
-    // #if defined(_WIN32) || defined(_WIN64)
-
-    //     if (_kbhit())
-    //         return LOGIC_TRUE;
-    //     return LOGIC_FALSE;
-
-    // #elif defined(__linux__)
-    //     struct timeval tv;
-    //     tv.tv_sec = 0L;
-    //     tv.tv_usec = 0L;
-
-    //     fd_set fds;
-    //     FD_ZERO(&fds);
-    //     FD_SET(STDIN_FILENO, &fds);
-
-    //     return (select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv) > 0 ? LOGIC_TRUE : LOGIC_FALSE);
-
-    // #else
-    // #error "Unsupported Platform"
-    // #endif
-    // }
-
-    // int internal_getch()
-    // {
-    // #if defined(_WIN32) || defined(_WIN64)
-    //     return _getch();
-    // #elif defined(__linux__)
-    //     char ch;
-    //     if (read(STDIN_FILENO, &ch, 1) < 0)
-    //         return -1;
-    //     else
-    //         return ch;
-    // #else
-    // #error "Unsupported Platform"
-    // #endif
-    // }
 
     void InputHandleKeyEvents(KEY_EVENT_RECORD &keyEvent_win32, EventImage &eventImage)
     {
@@ -336,7 +261,6 @@ namespace zim
         eventImage.windowEvent.isFocusedLogic = Logic::True;
         eventImage.windowEvent.isResizedLogic = Logic::False;
 
-#if defined(_WIN32) || defined(_WIN64)
         DWORD eventsRead;
         DWORD eventsAvailable;
 
@@ -378,13 +302,8 @@ namespace zim
                 }
             }
         }
-
-#elif defined(__linux__)
-        // Linux implementation here
-#else
-#error "Unsupported Platform"
-#endif
     }
+
     EventImage &Window::GetEventImage() const
     {
         return this->pImpl_Window->event_image;
@@ -434,22 +353,10 @@ namespace zim
             throw std::runtime_error("error init window");
         }
 
-#if defined(_WIN32) || defined(_WIN64)
         this->pImpl_Window->o_handle = GetStdHandle(STD_OUTPUT_HANDLE);
         this->pImpl_Window->i_handle = GetStdHandle(STD_INPUT_HANDLE);
 
         set_special_console_flags_win32(this->pImpl_Window->i_handle);
-
-#elif defined(__linux__)
-        this->pImpl_Window->fd = STDOUT_FILENO;
-        tcgetattr(this->pImpl_Window->fd, &this->pImpl_Window->orig_termios);
-
-        struct termios raw = this->pImpl_Window->orig_termios;
-        raw.c_lflag &= ~(ICANON | ECHO);
-        tcsetattr(this->pImpl_Window->fd, TCSANOW, &raw);
-#else
-#error "Unsupported Platform"
-#endif
 
         this->pImpl_Window->dimen = this->GetDimensions();
 
@@ -473,18 +380,7 @@ namespace zim
     void Window::SetTitle(std::string title)
     {
         this->pImpl_Window->title = title;
-#if defined(_WIN32) || defined(_WIN64)
         SetConsoleTitleA(title.c_str());
-#elif defined(__linux__)
-        if (isatty(this->pImpl_Window->fd))
-        {
-            write(this->pImpl_Window->fd, "\033]0;", 4);
-            write(this->pImpl_Window->fd, title.c_str(), title.length());
-            write(this->pImpl_Window->fd, "\007", 1);
-        }
-#else
-#error "Unsupported Platform"
-#endif
     }
 
     const PointDetail &Window::GetBufferBaseDetail()
@@ -497,29 +393,10 @@ namespace zim
 
         Vector2D dimen;
 
-#if defined(_WIN32) || defined(_WIN64)
         CONSOLE_SCREEN_BUFFER_INFO csbi;
         GetConsoleScreenBufferInfo(this->pImpl_Window->o_handle, &csbi);
         dimen.x = csbi.dwSize.X;
         dimen.y = csbi.dwSize.Y;
-#elif defined(__linux__)
-
-        struct winsize ws;
-        if (ioctl(this->pImpl_Window->fd, TIOCGWINSZ, &ws) == 0)
-        {
-            dimen.x = ws.ws_col;
-            dimen.y = ws.ws_row;
-        }
-        else
-        {
-            dimen.x = 0;
-            dimen.y = 0;
-        }
-
-#else
-#error "Unsupported Platform"
-#endif
-
         return dimen;
     }
 
@@ -547,20 +424,10 @@ namespace zim
     void Window::SetCursorVisibleLogic(Logic logic)
     {
 
-#if defined(_WIN32) || defined(_WIN64)
         CONSOLE_CURSOR_INFO info;
         GetConsoleCursorInfo(this->pImpl_Window->o_handle, &info);
         info.bVisible = (logic == Logic::True ? TRUE : FALSE);
         SetConsoleCursorInfo(this->pImpl_Window->o_handle, &info);
-#elif defined(__linux__)
-
-        std::string buf = (logic == LOGIC_TRUE ? "\033[?25h" : "\033[?25l");
-
-        write(this->pImpl_Window->fd, buf.c_str(), buf.length());
-
-#else
-#error "Unsupported Platform"
-#endif
 
         return;
     }
@@ -590,8 +457,6 @@ namespace zim
     void Window::SoftClearBuffer()
     {
 
-#if defined(_WIN32) || defined(_WIN64)
-
         CONSOLE_SCREEN_BUFFER_INFO csbi;
         GetConsoleScreenBufferInfo(this->pImpl_Window->o_handle, &csbi);
 
@@ -611,13 +476,6 @@ namespace zim
         FillConsoleOutputAttribute(this->pImpl_Window->o_handle, csbi.wAttributes, newSize.X * newSize.Y, topLeft, &written);
 
         SetConsoleCursorPosition(this->pImpl_Window->o_handle, topLeft);
-
-#elif defined(__linux__)
-        std::string buf = "\033[2J\033[H";
-        write(this->pImpl_Window->fd, buf.c_str(), buf.length());
-#else
-#error "Unsupported Platform"
-#endif
     }
 
     void Window::HardClearBuffer()
@@ -625,13 +483,7 @@ namespace zim
 
         this->SoftClearBuffer();
 
-#if defined(_WIN32) || defined(_WIN64)
         system("cls");
-#elif defined(__linux__)
-        system("clear");
-#else
-#error "Unsupported Platform"
-#endif
     }
 
     void Window::CMDSetOverloadStyle(OverloadStyle style)
@@ -757,7 +609,8 @@ namespace zim
         f.close();
     }
 
-    void Window::RestoreConfig(){
+    void Window::RestoreConfig()
+    {
         set_special_console_flags_win32(this->pImpl_Window->i_handle);
     }
 
@@ -765,14 +618,6 @@ namespace zim
     {
         if (this->pImpl_Window)
         {
-
-#if defined(_WIN32) || defined(_WIN64)
-
-#elif defined(__linux__)
-            tcsetattr(this->pImpl_Window->fd, TCSANOW, &this->pImpl_Window->orig_termios);
-#else
-#error "Unsupported Platform"
-#endif
             delete this->pImpl_Window;
         }
     }

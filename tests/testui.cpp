@@ -1,5 +1,5 @@
 #include "../zim/Application.hpp"
-
+#include "string"
 int main(){
     using namespace zim;
 
@@ -13,9 +13,18 @@ int main(){
 
     ui.DefineEventListener([&](EventImage& eventImage,Element& This,Element& document){
         if(eventImage.eventOccuredLogic==Logic::True){
-            if(eventImage.mouseEvent.keyPressed==MouseKey::Right){
+            if(eventImage.mouseEvent.keyPressed==MouseKey::Left){
                 app.SafeQuit();
+            }else if(eventImage.mouseEvent.keyPressed==MouseKey::Right){
+                std::string buffer = std::string("(")+std::to_string(eventImage.mouseEvent.position.x)+","+std::to_string(eventImage.mouseEvent.position.y)+")";
+
+                ui.GetPanel().Title().sentence=buffer;
             }
+
+            std::string buffer = std::string("(")+std::to_string(eventImage.mouseEvent.position.x)+","+std::to_string(eventImage.mouseEvent.position.y)+")";
+
+                ui.GetPanel().Title().sentence=buffer;
+
         }
     });
 
