@@ -62,6 +62,18 @@ void ResetEventImage(zim::EventImage &eventImage)
 void CaptureInput(int fd, zim::EventImage &eventImage)
 {
 
+    auto decodeModifier = [](int terminalModCode) -> zim::KeyboardKey {
+        // xterm modifier code is 1 + bitmask(Shift=1, Alt=2, Ctrl=4)
+        const int bits = terminalModCode - 1;
+        if (bits & 4)
+            return zim::KeyboardKey::LeftCtrl;
+        if (bits & 2)
+            return zim::KeyboardKey::LeftAlt;
+        if (bits & 1)
+            return zim::KeyboardKey::Shift;
+        return zim::KeyboardKey::None;
+    };
+
     char buf[64] = {0};
     int n = read(fd, buf, sizeof(buf) - 1);
     ResetEventImage(eventImage);
@@ -107,8 +119,29 @@ void CaptureInput(int fd, zim::EventImage &eventImage)
         char c = buf[0];
         zim::KeyState state;
 
-        // Ctrl + A-Z
-        if (c >= 1 && c <= 26)
+        // Handle non-printable control keys first so Enter is not decoded as Ctrl+J.
+        if (c == 9)
+        {
+            state.key = zim::KeyboardKey::Tab;
+            state.modifier = zim::KeyboardKey::None;
+        }
+        else if (c == 10 || c == 13)
+        {
+            state.key = zim::KeyboardKey::Enter;
+            state.modifier = zim::KeyboardKey::None;
+        }
+        else if (c == 27)
+        {
+            state.key = zim::KeyboardKey::Escape;
+            state.modifier = zim::KeyboardKey::None;
+        }
+        else if (c == 127)
+        {
+            state.key = zim::KeyboardKey::Backspace;
+            state.modifier = zim::KeyboardKey::None;
+        }
+        // Ctrl + A-Z (except keys handled above)
+        else if (c >= 1 && c <= 26)
         {
             state.key = static_cast<zim::KeyboardKey>('A' + c - 1);
             state.modifier = zim::KeyboardKey::LeftCtrl;
@@ -117,29 +150,12 @@ void CaptureInput(int fd, zim::EventImage &eventImage)
         else if (c >= 32 && c <= 126)
         {
             state.key = static_cast<zim::KeyboardKey>(c);
-            state.modifier = zim::KeyboardKey::Unknown;
+            state.modifier = (c >= 'A' && c <= 'Z') ? zim::KeyboardKey::Shift : zim::KeyboardKey::None;
         }
         else
         {
-            // Non-printable: Enter, Tab, Escape, Backspace
-            switch (c)
-            {
-            case 9:
-                state.key = zim::KeyboardKey::Tab;
-                break;
-            case 10:
-                state.key = zim::KeyboardKey::Enter;
-                break;
-            case 27:
-                state.key = zim::KeyboardKey::Escape;
-                break;
-            case 127:
-                state.key = zim::KeyboardKey::Backspace;
-                break;
-            default:
-                state.key = zim::KeyboardKey::Unknown;
-            }
-            state.modifier = zim::KeyboardKey::Unknown;
+            state.key = zim::KeyboardKey::Unknown;
+            state.modifier = zim::KeyboardKey::None;
         }
         eventImage.keyboardEvent.keys.Put(state);
         return;
@@ -162,10 +178,41 @@ void CaptureInput(int fd, zim::EventImage &eventImage)
         // CSI sequences ESC [ ...
         if (buf[1] == '[')
         {
+            // Plain arrow keys: ESC [ A/B/C/D
+            if (n >= 3)
+            {
+                bool matched = true;
+                switch (buf[2])
+                {
+                case 'A':
+                    state.key = zim::KeyboardKey::ArrowUp;
+                    break;
+                case 'B':
+                    state.key = zim::KeyboardKey::ArrowDown;
+                    break;
+                case 'C':
+                    state.key = zim::KeyboardKey::ArrowRight;
+                    break;
+                case 'D':
+                    state.key = zim::KeyboardKey::ArrowLeft;
+                    break;
+                default:
+                    matched = false;
+                    break;
+                }
+
+                if (matched)
+                {
+                    state.modifier = zim::KeyboardKey::None;
+                    eventImage.keyboardEvent.keys.Put(state);
+                    return;
+                }
+            }
+
             // Arrow keys + modifier format: ESC [ 1 ; MOD CODE A/B/C/D
             if (n >= 6 && buf[2] == '1' && buf[3] == ';')
             {
-                int mod, code;
+                int mod;
                 char dir;
                 if (sscanf(buf, "\033[1;%d%c", &mod, &dir) == 2)
                 {
@@ -187,21 +234,76 @@ void CaptureInput(int fd, zim::EventImage &eventImage)
                         state.key = zim::KeyboardKey::Unknown;
                     }
 
-                    // Modifier mapping (xterm / SGR)
-                    state.modifier = zim::KeyboardKey::Unknown;
-                    if (mod & 1)
-                        state.modifier = zim::KeyboardKey::Shift;
-                    if (mod & 2)
-                        state.modifier = zim::KeyboardKey::Shift; // some terminals
-                    if (mod & 4)
-                        state.modifier = zim::KeyboardKey::LeftAlt;
-                    if (mod & 8)
-                        state.modifier = zim::KeyboardKey::LeftAlt;
-                    if (mod & 16)
-                        state.modifier = zim::KeyboardKey::LeftCtrl;
+                    state.modifier = decodeModifier(mod);
 
                     eventImage.keyboardEvent.keys.Put(state);
                     return;
+                }
+            }
+
+            // Keys with modifiers in ~ form: ESC [ NUM ; MOD ~
+            if (n >= 6)
+            {
+                int code;
+                int mod;
+                if (sscanf(buf, "\033[%d;%d~", &code, &mod) == 2)
+                {
+                    bool matched = true;
+                    switch (code)
+                    {
+                    case 1:
+                        state.key = zim::KeyboardKey::Home;
+                        break;
+                    case 2:
+                        state.key = zim::KeyboardKey::Insert;
+                        break;
+                    case 3:
+                        state.key = zim::KeyboardKey::Delete;
+                        break;
+                    case 4:
+                        state.key = zim::KeyboardKey::End;
+                        break;
+                    case 5:
+                        state.key = zim::KeyboardKey::PageUp;
+                        break;
+                    case 6:
+                        state.key = zim::KeyboardKey::PageDown;
+                        break;
+                    case 15:
+                        state.key = zim::KeyboardKey::F5;
+                        break;
+                    case 17:
+                        state.key = zim::KeyboardKey::F6;
+                        break;
+                    case 18:
+                        state.key = zim::KeyboardKey::F7;
+                        break;
+                    case 19:
+                        state.key = zim::KeyboardKey::F8;
+                        break;
+                    case 20:
+                        state.key = zim::KeyboardKey::F9;
+                        break;
+                    case 21:
+                        state.key = zim::KeyboardKey::F10;
+                        break;
+                    case 23:
+                        state.key = zim::KeyboardKey::F11;
+                        break;
+                    case 24:
+                        state.key = zim::KeyboardKey::F12;
+                        break;
+                    default:
+                        matched = false;
+                        break;
+                    }
+
+                    if (matched)
+                    {
+                        state.modifier = decodeModifier(mod);
+                        eventImage.keyboardEvent.keys.Put(state);
+                        return;
+                    }
                 }
             }
 
@@ -212,37 +314,37 @@ void CaptureInput(int fd, zim::EventImage &eventImage)
                 if (buf[2] == '5' && buf[3] == '~')
                 {
                     state.key = zim::KeyboardKey::PageUp;
-                    state.modifier = zim::KeyboardKey::Unknown;
+                    state.modifier = zim::KeyboardKey::None;
                     matched = true;
                 }
                 else if (buf[2] == '6' && buf[3] == '~')
                 {
                     state.key = zim::KeyboardKey::PageDown;
-                    state.modifier = zim::KeyboardKey::Unknown;
+                    state.modifier = zim::KeyboardKey::None;
                     matched = true;
                 }
                 else if (buf[2] == '1' && buf[3] == '~')
                 {
                     state.key = zim::KeyboardKey::Home;
-                    state.modifier = zim::KeyboardKey::Unknown;
+                    state.modifier = zim::KeyboardKey::None;
                     matched = true;
                 }
                 else if (buf[2] == '4' && buf[3] == '~')
                 {
                     state.key = zim::KeyboardKey::End;
-                    state.modifier = zim::KeyboardKey::Unknown;
+                    state.modifier = zim::KeyboardKey::None;
                     matched = true;
                 }
                 else if (buf[2] == '2' && buf[3] == '~')
                 {
                     state.key = zim::KeyboardKey::Insert;
-                    state.modifier = zim::KeyboardKey::Unknown;
+                    state.modifier = zim::KeyboardKey::None;
                     matched = true;
                 }
                 else if (buf[2] == '3' && buf[3] == '~')
                 {
                     state.key = zim::KeyboardKey::Delete;
-                    state.modifier = zim::KeyboardKey::Unknown;
+                    state.modifier = zim::KeyboardKey::None;
                     matched = true;
                 }
                 else if (buf[2] == '1' && buf[3] == '5' && buf[4] == '~')
@@ -288,6 +390,12 @@ void CaptureInput(int fd, zim::EventImage &eventImage)
 
                 if (matched)
                 {
+                    if (state.modifier != zim::KeyboardKey::LeftCtrl &&
+                        state.modifier != zim::KeyboardKey::LeftAlt &&
+                        state.modifier != zim::KeyboardKey::Shift)
+                    {
+                        state.modifier = zim::KeyboardKey::None;
+                    }
                     eventImage.keyboardEvent.keys.Put(state);
                     return;
                 }
@@ -314,7 +422,7 @@ void CaptureInput(int fd, zim::EventImage &eventImage)
             default:
                 state.key = zim::KeyboardKey::Unknown;
             }
-            state.modifier = zim::KeyboardKey::Unknown;
+            state.modifier = zim::KeyboardKey::None;
             eventImage.keyboardEvent.keys.Put(state);
             return;
         }
