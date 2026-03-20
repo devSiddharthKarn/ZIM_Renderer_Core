@@ -61,35 +61,149 @@ void ResetEventImage(zim::EventImage &eventImage)
 
 void CaptureInput(int fd, zim::EventImage &eventImage)
 {
-
     auto decodeModifier = [](int terminalModCode) -> zim::KeyboardKey {
-        // xterm modifier code is 1 + bitmask(Shift=1, Alt=2, Ctrl=4)
-        const int bits = terminalModCode - 1;
-        if (bits & 4)
-            return zim::KeyboardKey::LeftCtrl;
-        if (bits & 2)
-            return zim::KeyboardKey::LeftAlt;
-        if (bits & 1)
+        // xterm modifier code: 1 (none), 2 (shift), 3 (alt), 5 (ctrl).
+        // Combination/unknown modifier codes map to Unknown.
+        switch (terminalModCode)
+        {
+        case 1:
+            return zim::KeyboardKey::None;
+        case 2:
             return zim::KeyboardKey::Shift;
-        return zim::KeyboardKey::None;
+        case 3:
+            return zim::KeyboardKey::LeftAlt;
+        case 5:
+            return zim::KeyboardKey::LeftCtrl;
+        default:
+            return zim::KeyboardKey::Unknown;
+        }
     };
 
-    char buf[64] = {0};
+    auto decodeKeyCode = [](int code, zim::KeyboardKey &outKey) -> bool {
+        switch (code)
+        {
+        case 1:
+            outKey = zim::KeyboardKey::Home;
+            return true;
+        case 2:
+            outKey = zim::KeyboardKey::Insert;
+            return true;
+        case 3:
+            outKey = zim::KeyboardKey::Delete;
+            return true;
+        case 4:
+            outKey = zim::KeyboardKey::End;
+            return true;
+        case 5:
+            outKey = zim::KeyboardKey::PageUp;
+            return true;
+        case 6:
+            outKey = zim::KeyboardKey::PageDown;
+            return true;
+        case 15:
+            outKey = zim::KeyboardKey::F5;
+            return true;
+        case 17:
+            outKey = zim::KeyboardKey::F6;
+            return true;
+        case 18:
+            outKey = zim::KeyboardKey::F7;
+            return true;
+        case 19:
+            outKey = zim::KeyboardKey::F8;
+            return true;
+        case 20:
+            outKey = zim::KeyboardKey::F9;
+            return true;
+        case 21:
+            outKey = zim::KeyboardKey::F10;
+            return true;
+        case 23:
+            outKey = zim::KeyboardKey::F11;
+            return true;
+        case 24:
+            outKey = zim::KeyboardKey::F12;
+            return true;
+        default:
+            outKey = zim::KeyboardKey::Unknown;
+            return false;
+        }
+    };
+
+    char buf[256] = {0};
     int n = read(fd, buf, sizeof(buf) - 1);
     ResetEventImage(eventImage);
     if (n <= 0)
+    {
         return;
+    }
 
     buf[n] = '\0';
-
     eventImage.eventOccuredLogic = zim::Logic::True;
 
-    // --- Mouse SGR sequences ESC [ < BUTTON ; X ; Y M/m ---
-    if (n >= 6 && buf[0] == 27 && buf[1] == '[' && buf[2] == '<')
+    auto pushKey = [&eventImage](zim::KeyboardKey key, zim::KeyboardKey modifier) {
+        eventImage.keyboardEvent.keys.Put(zim::KeyState(key, modifier));
+    };
+
+    auto parseSingleByte = [&pushKey](unsigned char c) {
+        if (c == 9)
+        {
+            pushKey(zim::KeyboardKey::Tab, zim::KeyboardKey::None);
+            return;
+        }
+        if (c == 10 || c == 13)
+        {
+            pushKey(zim::KeyboardKey::Enter, zim::KeyboardKey::None);
+            return;
+        }
+        if (c == 127)
+        {
+            pushKey(zim::KeyboardKey::Backspace, zim::KeyboardKey::None);
+            return;
+        }
+        if (c >= 1 && c <= 26)
+        {
+            pushKey(static_cast<zim::KeyboardKey>('a' + c - 1), zim::KeyboardKey::LeftCtrl);
+            return;
+        }
+        if (c >= 32 && c <= 126)
+        {
+            pushKey(static_cast<zim::KeyboardKey>(c),
+                    (c >= 'A' && c <= 'Z') ? zim::KeyboardKey::Shift : zim::KeyboardKey::None);
+            return;
+        }
+        pushKey(zim::KeyboardKey::Unknown, zim::KeyboardKey::Unknown);
+    };
+
+    int i = 0;
+    while (i < n)
     {
-        int b, x, y;
-        char action;
-        if (sscanf(buf, "\033[<%d;%d;%d%c", &b, &x, &y, &action) == 4)
+        unsigned char c = static_cast<unsigned char>(buf[i]);
+
+        if (c != 27)
+        {
+            parseSingleByte(c);
+            i++;
+            continue;
+        }
+
+        const char *p = &buf[i];
+        int consumed = 0;
+
+        // Standalone Escape
+        if (i + 1 >= n)
+        {
+            pushKey(zim::KeyboardKey::Escape, zim::KeyboardKey::None);
+            i++;
+            continue;
+        }
+
+        // Mouse SGR sequences: ESC [ < BUTTON ; X ; Y M/m
+        int b = 0;
+        int x = 0;
+        int y = 0;
+        char action = 0;
+        if (sscanf(p, "\033[<%d;%d;%d%c%n", &b, &x, &y, &action, &consumed) == 4 && consumed > 0)
         {
             if (action == 'M')
             {
@@ -108,326 +222,148 @@ void CaptureInput(int fd, zim::EventImage &eventImage)
                 else if (b == 67)
                     eventImage.mouseEvent.scroll.x = 1;
             }
-            eventImage.mouseEvent.position = zim::MakeVector2D(x-1, y-1);
-            return;
-        }
-    }
-
-    // --- Single-byte keys ---
-    if (n == 1)
-    {
-        char c = buf[0];
-        zim::KeyState state;
-
-        // Handle non-printable control keys first so Enter is not decoded as Ctrl+J.
-        if (c == 9)
-        {
-            state.key = zim::KeyboardKey::Tab;
-            state.modifier = zim::KeyboardKey::None;
-        }
-        else if (c == 10 || c == 13)
-        {
-            state.key = zim::KeyboardKey::Enter;
-            state.modifier = zim::KeyboardKey::None;
-        }
-        else if (c == 27)
-        {
-            state.key = zim::KeyboardKey::Escape;
-            state.modifier = zim::KeyboardKey::None;
-        }
-        else if (c == 127)
-        {
-            state.key = zim::KeyboardKey::Backspace;
-            state.modifier = zim::KeyboardKey::None;
-        }
-        // Ctrl + A-Z (except keys handled above)
-        else if (c >= 1 && c <= 26)
-        {
-            state.key = static_cast<zim::KeyboardKey>('A' + c - 1);
-            state.modifier = zim::KeyboardKey::LeftCtrl;
-        }
-        // Printable ASCII
-        else if (c >= 32 && c <= 126)
-        {
-            state.key = static_cast<zim::KeyboardKey>(c);
-            state.modifier = (c >= 'A' && c <= 'Z') ? zim::KeyboardKey::Shift : zim::KeyboardKey::None;
-        }
-        else
-        {
-            state.key = zim::KeyboardKey::Unknown;
-            state.modifier = zim::KeyboardKey::None;
-        }
-        eventImage.keyboardEvent.keys.Put(state);
-        return;
-    }
-
-    // --- Escape sequences (Alt, arrows, function keys, modifiers) ---
-    if (buf[0] == 27)
-    {
-        zim::KeyState state;
-
-        // Alt + key
-        if (buf[1] != '[' && buf[1] != 'O')
-        {
-            state.key = static_cast<zim::KeyboardKey>(buf[1]);
-            state.modifier = zim::KeyboardKey::LeftAlt;
-            eventImage.keyboardEvent.keys.Put(state);
-            return;
+            eventImage.mouseEvent.position = zim::MakeVector2D(x - 1, y - 1);
+            i += consumed;
+            continue;
         }
 
-        // CSI sequences ESC [ ...
-        if (buf[1] == '[')
+        // Alt + key: ESC then non-CSI/non-SS3 byte
+        if (buf[i + 1] != '[' && buf[i + 1] != 'O')
         {
-            // Plain arrow keys: ESC [ A/B/C/D
-            if (n >= 3)
+            unsigned char altChar = static_cast<unsigned char>(buf[i + 1]);
+            if (altChar >= 32 && altChar <= 126)
             {
-                bool matched = true;
-                switch (buf[2])
-                {
-                case 'A':
-                    state.key = zim::KeyboardKey::ArrowUp;
-                    break;
-                case 'B':
-                    state.key = zim::KeyboardKey::ArrowDown;
-                    break;
-                case 'C':
-                    state.key = zim::KeyboardKey::ArrowRight;
-                    break;
-                case 'D':
-                    state.key = zim::KeyboardKey::ArrowLeft;
-                    break;
-                default:
-                    matched = false;
-                    break;
-                }
-
-                if (matched)
-                {
-                    state.modifier = zim::KeyboardKey::None;
-                    eventImage.keyboardEvent.keys.Put(state);
-                    return;
-                }
+                pushKey(static_cast<zim::KeyboardKey>(altChar), zim::KeyboardKey::LeftAlt);
             }
-
-            // Arrow keys + modifier format: ESC [ 1 ; MOD CODE A/B/C/D
-            if (n >= 6 && buf[2] == '1' && buf[3] == ';')
+            else
             {
-                int mod;
-                char dir;
-                if (sscanf(buf, "\033[1;%d%c", &mod, &dir) == 2)
-                {
-                    switch (dir)
-                    {
-                    case 'A':
-                        state.key = zim::KeyboardKey::ArrowUp;
-                        break;
-                    case 'B':
-                        state.key = zim::KeyboardKey::ArrowDown;
-                        break;
-                    case 'C':
-                        state.key = zim::KeyboardKey::ArrowRight;
-                        break;
-                    case 'D':
-                        state.key = zim::KeyboardKey::ArrowLeft;
-                        break;
-                    default:
-                        state.key = zim::KeyboardKey::Unknown;
-                    }
-
-                    state.modifier = decodeModifier(mod);
-
-                    eventImage.keyboardEvent.keys.Put(state);
-                    return;
-                }
+                pushKey(zim::KeyboardKey::Unknown, zim::KeyboardKey::LeftAlt);
             }
-
-            // Keys with modifiers in ~ form: ESC [ NUM ; MOD ~
-            if (n >= 6)
-            {
-                int code;
-                int mod;
-                if (sscanf(buf, "\033[%d;%d~", &code, &mod) == 2)
-                {
-                    bool matched = true;
-                    switch (code)
-                    {
-                    case 1:
-                        state.key = zim::KeyboardKey::Home;
-                        break;
-                    case 2:
-                        state.key = zim::KeyboardKey::Insert;
-                        break;
-                    case 3:
-                        state.key = zim::KeyboardKey::Delete;
-                        break;
-                    case 4:
-                        state.key = zim::KeyboardKey::End;
-                        break;
-                    case 5:
-                        state.key = zim::KeyboardKey::PageUp;
-                        break;
-                    case 6:
-                        state.key = zim::KeyboardKey::PageDown;
-                        break;
-                    case 15:
-                        state.key = zim::KeyboardKey::F5;
-                        break;
-                    case 17:
-                        state.key = zim::KeyboardKey::F6;
-                        break;
-                    case 18:
-                        state.key = zim::KeyboardKey::F7;
-                        break;
-                    case 19:
-                        state.key = zim::KeyboardKey::F8;
-                        break;
-                    case 20:
-                        state.key = zim::KeyboardKey::F9;
-                        break;
-                    case 21:
-                        state.key = zim::KeyboardKey::F10;
-                        break;
-                    case 23:
-                        state.key = zim::KeyboardKey::F11;
-                        break;
-                    case 24:
-                        state.key = zim::KeyboardKey::F12;
-                        break;
-                    default:
-                        matched = false;
-                        break;
-                    }
-
-                    if (matched)
-                    {
-                        state.modifier = decodeModifier(mod);
-                        eventImage.keyboardEvent.keys.Put(state);
-                        return;
-                    }
-                }
-            }
-
-            // Page Up / Page Down / Home / End / Insert / Delete / F5-F12
-            if (n >= 5)
-            {
-                bool matched = false;
-                if (buf[2] == '5' && buf[3] == '~')
-                {
-                    state.key = zim::KeyboardKey::PageUp;
-                    state.modifier = zim::KeyboardKey::None;
-                    matched = true;
-                }
-                else if (buf[2] == '6' && buf[3] == '~')
-                {
-                    state.key = zim::KeyboardKey::PageDown;
-                    state.modifier = zim::KeyboardKey::None;
-                    matched = true;
-                }
-                else if (buf[2] == '1' && buf[3] == '~')
-                {
-                    state.key = zim::KeyboardKey::Home;
-                    state.modifier = zim::KeyboardKey::None;
-                    matched = true;
-                }
-                else if (buf[2] == '4' && buf[3] == '~')
-                {
-                    state.key = zim::KeyboardKey::End;
-                    state.modifier = zim::KeyboardKey::None;
-                    matched = true;
-                }
-                else if (buf[2] == '2' && buf[3] == '~')
-                {
-                    state.key = zim::KeyboardKey::Insert;
-                    state.modifier = zim::KeyboardKey::None;
-                    matched = true;
-                }
-                else if (buf[2] == '3' && buf[3] == '~')
-                {
-                    state.key = zim::KeyboardKey::Delete;
-                    state.modifier = zim::KeyboardKey::None;
-                    matched = true;
-                }
-                else if (buf[2] == '1' && buf[3] == '5' && buf[4] == '~')
-                {
-                    state.key = zim::KeyboardKey::F5;
-                    matched = true;
-                }
-                else if (buf[2] == '1' && buf[3] == '7' && buf[4] == '~')
-                {
-                    state.key = zim::KeyboardKey::F6;
-                    matched = true;
-                }
-                else if (buf[2] == '1' && buf[3] == '8' && buf[4] == '~')
-                {
-                    state.key = zim::KeyboardKey::F7;
-                    matched = true;
-                }
-                else if (buf[2] == '1' && buf[3] == '9' && buf[4] == '~')
-                {
-                    state.key = zim::KeyboardKey::F8;
-                    matched = true;
-                }
-                else if (buf[2] == '2' && buf[3] == '0' && buf[4] == '~')
-                {
-                    state.key = zim::KeyboardKey::F9;
-                    matched = true;
-                }
-                else if (buf[2] == '2' && buf[3] == '1' && buf[4] == '~')
-                {
-                    state.key = zim::KeyboardKey::F10;
-                    matched = true;
-                }
-                else if (buf[2] == '2' && buf[3] == '3' && buf[4] == '~')
-                {
-                    state.key = zim::KeyboardKey::F11;
-                    matched = true;
-                }
-                else if (buf[2] == '2' && buf[3] == '4' && buf[4] == '~')
-                {
-                    state.key = zim::KeyboardKey::F12;
-                    matched = true;
-                }
-
-                if (matched)
-                {
-                    if (state.modifier != zim::KeyboardKey::LeftCtrl &&
-                        state.modifier != zim::KeyboardKey::LeftAlt &&
-                        state.modifier != zim::KeyboardKey::Shift)
-                    {
-                        state.modifier = zim::KeyboardKey::None;
-                    }
-                    eventImage.keyboardEvent.keys.Put(state);
-                    return;
-                }
-            }
+            i += 2;
+            continue;
         }
 
-        // Function keys F1-F4
-        if (buf[1] == 'O')
+        // CSI arrows with optional modifier: ESC [ 1 ; MOD A/B/C/D
+        int mod = 0;
+        char dir = 0;
+        if (sscanf(p, "\033[1;%d%c%n", &mod, &dir, &consumed) == 2 && consumed > 0)
         {
-            switch (buf[2])
+            zim::KeyboardKey key = zim::KeyboardKey::Unknown;
+            switch (dir)
             {
-            case 'P':
-                state.key = zim::KeyboardKey::F1;
+            case 'A':
+                key = zim::KeyboardKey::ArrowUp;
                 break;
-            case 'Q':
-                state.key = zim::KeyboardKey::F2;
+            case 'B':
+                key = zim::KeyboardKey::ArrowDown;
                 break;
-            case 'R':
-                state.key = zim::KeyboardKey::F3;
+            case 'C':
+                key = zim::KeyboardKey::ArrowRight;
                 break;
-            case 'S':
-                state.key = zim::KeyboardKey::F4;
+            case 'D':
+                key = zim::KeyboardKey::ArrowLeft;
                 break;
             default:
-                state.key = zim::KeyboardKey::Unknown;
+                key = zim::KeyboardKey::Unknown;
+                break;
             }
-            state.modifier = zim::KeyboardKey::None;
-            eventImage.keyboardEvent.keys.Put(state);
-            return;
+            pushKey(key, decodeModifier(mod));
+            i += consumed;
+            continue;
         }
-    }
 
+        // CSI keys with modifier: ESC [ NUM ; MOD ~
+        int code = 0;
+        if (sscanf(p, "\033[%d;%d~%n", &code, &mod, &consumed) == 2 && consumed > 0)
+        {
+            zim::KeyboardKey key = zim::KeyboardKey::Unknown;
+            if (decodeKeyCode(code, key))
+            {
+                pushKey(key, decodeModifier(mod));
+            }
+            else
+            {
+                pushKey(zim::KeyboardKey::Unknown, decodeModifier(mod));
+            }
+            i += consumed;
+            continue;
+        }
+
+        // CSI plain arrows: ESC [ A/B/C/D
+        if (sscanf(p, "\033[%c%n", &dir, &consumed) == 1 && consumed == 3)
+        {
+            zim::KeyboardKey key = zim::KeyboardKey::Unknown;
+            switch (dir)
+            {
+            case 'A':
+                key = zim::KeyboardKey::ArrowUp;
+                break;
+            case 'B':
+                key = zim::KeyboardKey::ArrowDown;
+                break;
+            case 'C':
+                key = zim::KeyboardKey::ArrowRight;
+                break;
+            case 'D':
+                key = zim::KeyboardKey::ArrowLeft;
+                break;
+            default:
+                break;
+            }
+            if (key != zim::KeyboardKey::Unknown)
+            {
+                pushKey(key, zim::KeyboardKey::None);
+                i += consumed;
+                continue;
+            }
+        }
+
+        // CSI plain keys: ESC [ NUM ~
+        if (sscanf(p, "\033[%d~%n", &code, &consumed) == 1 && consumed > 0)
+        {
+            zim::KeyboardKey key = zim::KeyboardKey::Unknown;
+            if (decodeKeyCode(code, key))
+            {
+                pushKey(key, zim::KeyboardKey::None);
+            }
+            else
+            {
+                pushKey(zim::KeyboardKey::Unknown, zim::KeyboardKey::None);
+            }
+            i += consumed;
+            continue;
+        }
+
+        // SS3 function keys: ESC O P/Q/R/S => F1/F2/F3/F4
+        char fkey = 0;
+        if (sscanf(p, "\033O%c%n", &fkey, &consumed) == 1 && consumed == 3)
+        {
+            switch (fkey)
+            {
+            case 'P':
+                pushKey(zim::KeyboardKey::F1, zim::KeyboardKey::None);
+                break;
+            case 'Q':
+                pushKey(zim::KeyboardKey::F2, zim::KeyboardKey::None);
+                break;
+            case 'R':
+                pushKey(zim::KeyboardKey::F3, zim::KeyboardKey::None);
+                break;
+            case 'S':
+                pushKey(zim::KeyboardKey::F4, zim::KeyboardKey::None);
+                break;
+            default:
+                pushKey(zim::KeyboardKey::Unknown, zim::KeyboardKey::Unknown);
+                break;
+            }
+            i += consumed;
+            continue;
+        }
+
+        // Unrecognized escape sequence.
+        pushKey(zim::KeyboardKey::Unknown, zim::KeyboardKey::Unknown);
+        i++;
+    }
 }
 
 

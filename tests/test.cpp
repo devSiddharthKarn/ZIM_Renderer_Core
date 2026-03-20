@@ -1,5 +1,6 @@
 #include "../zim/zim.hpp"
 
+#include <deque>
 #include <string>
 
 using namespace zim;
@@ -7,7 +8,6 @@ using namespace zim;
 static std::string KeyToString(KeyboardKey key)
 {
     const int value = static_cast<int>(key);
-
     if (value >= 32 && value <= 126)
     {
         return std::string(1, static_cast<char>(value));
@@ -104,23 +104,49 @@ int main()
     Application app;
 
     Element ui;
-    ui.Position() = MakeVector2D(2, 1);
-    ui.Dimension() = MakeVector2D(80, 12);
+    ui.Position() = MakeVector2D(1, 1);
+    ui.Dimension() = MakeVector2D(100, 18);
     ui.GetPanel().SetPadding(1);
-    ui.GetPanel().Title().sentence = "Input test (press q or Esc to quit)";
+    ui.GetPanel().Title().sentence = "Live Input Feed (q or Esc to quit)";
 
     std::string lastKey = "None";
     std::string lastModifier = "None";
-    std::string lastMouse = "None";
-    Vector2D lastMousePos = MakeVector2D(0, 0);
+    std::string lastMouseButton = "None";
+    Vector2D mousePos = MakeVector2D(0, 0);
+    Vector2D prevMousePos = MakeVector2D(0, 0);
+    Vector2D mouseDelta = MakeVector2D(0, 0);
     Vector2D lastScroll = MakeVector2D(0, 0);
+    int eventCount = 0;
+    std::deque<std::string> liveLog;
 
     ui.DefineEventListener([&](EventImage &eventImage, Element &This, Element &document) {
         if (eventImage.eventOccuredLogic == Logic::True)
         {
+            eventCount++;
+
+            if (eventImage.mouseEvent.position.x != 0 || eventImage.mouseEvent.position.y != 0)
+            {
+                prevMousePos = mousePos;
+                mousePos = eventImage.mouseEvent.position;
+                mouseDelta = MakeVector2D(mousePos.x - prevMousePos.x, mousePos.y - prevMousePos.y);
+                liveLog.push_back("Mouse move -> (" + std::to_string(mousePos.x) + "," + std::to_string(mousePos.y) + ")");
+            }
+
+            if (eventImage.mouseEvent.keyPressed != MouseKey::None)
+            {
+                lastMouseButton = MouseToString(eventImage.mouseEvent.keyPressed);
+                liveLog.push_back("Mouse btn  -> " + lastMouseButton);
+            }
+
+            if (eventImage.mouseEvent.scroll.x != 0 || eventImage.mouseEvent.scroll.y != 0)
+            {
+                lastScroll = eventImage.mouseEvent.scroll;
+                liveLog.push_back("Scroll     -> (" + std::to_string(lastScroll.x) + "," + std::to_string(lastScroll.y) + ")");
+            }
+
             while (eventImage.keyboardEvent.keys.IsEmpty() == Logic::False)
             {
-                KeyState state = eventImage.keyboardEvent.keys.Get();
+                const KeyState state = eventImage.keyboardEvent.keys.Get();
                 if (state.key == KeyboardKey::None)
                 {
                     continue;
@@ -128,42 +154,41 @@ int main()
 
                 lastKey = KeyToString(state.key);
                 lastModifier = KeyToString(state.modifier);
+                liveLog.push_back("Key        -> " + lastKey + " | mod: " + lastModifier);
 
                 if (state.key == KeyboardKey::Escape || state.key == KeyboardKey::q || state.key == KeyboardKey::Q)
                 {
                     app.SafeQuit();
                 }
             }
+        }
 
-            if (eventImage.mouseEvent.keyPressed != MouseKey::None)
-            {
-                lastMouse = MouseToString(eventImage.mouseEvent.keyPressed);
-            }
-
-            if (eventImage.mouseEvent.position.x != 0 || eventImage.mouseEvent.position.y != 0)
-            {
-                lastMousePos = eventImage.mouseEvent.position;
-            }
-
-            if (eventImage.mouseEvent.scroll.x != 0 || eventImage.mouseEvent.scroll.y != 0)
-            {
-                lastScroll = eventImage.mouseEvent.scroll;
-            }
+        while (liveLog.size() > 6)
+        {
+            liveLog.pop_front();
         }
 
         This.GetPanel().ClearBuffer();
-        This.GetPanel().WriteStr("Keyboard + Mouse Input Test", 0, 0, Logic::True);
-        This.GetPanel().WriteStr("Quit: q / Esc", 0, 1, Logic::True);
-        This.GetPanel().WriteStr("Last key      : " + lastKey, 0, 3, Logic::True);
-        This.GetPanel().WriteStr("Last modifier : " + lastModifier, 0, 4, Logic::True);
-        This.GetPanel().WriteStr("Last mouse btn: " + lastMouse, 0, 6, Logic::True);
-        This.GetPanel().WriteStr(
-            "Mouse position: (" + std::to_string(lastMousePos.x) + ", " + std::to_string(lastMousePos.y) + ")", 0, 7, Logic::True);
-        This.GetPanel().WriteStr(
-            "Last scroll   : (" + std::to_string(lastScroll.x) + ", " + std::to_string(lastScroll.y) + ")", 0, 8, Logic::True);
+        This.GetPanel().WriteStr("Live keyboard/mouse feedback", 0, 0, Logic::True);
+        This.GetPanel().WriteStr("Try: arrows, shift+arrows, ctrl+a, clicks, wheel", 0, 1, Logic::True);
+        This.GetPanel().WriteStr("Quit: q / Esc", 0, 2, Logic::True);
+        This.GetPanel().WriteStr("Event count : " + std::to_string(eventCount), 0, 4, Logic::True);
+        This.GetPanel().WriteStr("Last key    : " + lastKey, 0, 5, Logic::True);
+        This.GetPanel().WriteStr("Last mod    : " + lastModifier, 0, 6, Logic::True);
+        This.GetPanel().WriteStr("Mouse button: " + lastMouseButton, 0, 7, Logic::True);
+        This.GetPanel().WriteStr("Mouse pos   : (" + std::to_string(mousePos.x) + ", " + std::to_string(mousePos.y) + ")", 0, 8, Logic::True);
+        This.GetPanel().WriteStr("Mouse delta : (" + std::to_string(mouseDelta.x) + ", " + std::to_string(mouseDelta.y) + ")", 0, 9, Logic::True);
+        This.GetPanel().WriteStr("Last scroll : (" + std::to_string(lastScroll.x) + ", " + std::to_string(lastScroll.y) + ")", 0, 10, Logic::True);
+        This.GetPanel().WriteStr("Live log:", 0, 12, Logic::True);
+
+        int row = 13;
+        for (const std::string &line : liveLog)
+        {
+            This.GetPanel().WriteStr(line, 0, row, Logic::True);
+            row++;
+        }
     });
 
     app.GetDocument().AppendChildren(ui);
-
     return app.Execute();
 }
