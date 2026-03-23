@@ -64,10 +64,6 @@ namespace zim
 
         void SetBorderBGColor(Color color);
 
-        const Color &GetBorderBGColor() const;
-
-        const Color &GetBorderFGColor() const;
-
         void SetBorderFGColor(Color color);
 
         void SetTopBorderChar(char ch);
@@ -93,6 +89,23 @@ namespace zim
         int GetBufferHeight() const;
 
         void SetBorderChars(char top, char bottom, char left, char right);
+
+
+        PointDetail& TopBorderChar();
+
+        PointDetail& BottomBorderChar();
+
+        PointDetail& LeftBorderChar();
+
+        PointDetail& RightBorderChar();
+
+        PointDetail& TopLeftBorderChar();
+
+        PointDetail& TopRightBorderChar();
+
+        PointDetail& BottomLeftBorderChar();
+
+        PointDetail& BottomRightBorderChar();
 
         int GetBufferWidth() const;
 
