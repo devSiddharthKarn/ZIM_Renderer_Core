@@ -37,7 +37,6 @@ namespace zim
         int buffer_height;
         int buffer_width;
 
-
         std::vector<PointDetail> buffer;
 
         // Color border_bg_color;
@@ -68,12 +67,10 @@ namespace zim
 
         std::string title_displayed;
         int width_available = width - 2;
-
         if (width_available < 0)
             width_available = 0;
 
         int title_len = this->pImpl_Panel->title.sentence.length();
-
         if (title_len <= width_available)
         {
             title_displayed = this->pImpl_Panel->title.sentence;
@@ -83,8 +80,7 @@ namespace zim
             if (width_available >= 3)
             {
                 int cut = width_available - 3;
-                title_displayed =
-                    this->pImpl_Panel->title.sentence.substr(0, cut) + "...";
+                title_displayed = this->pImpl_Panel->title.sentence.substr(0, cut) + "...";
             }
             else
             {
@@ -92,48 +88,82 @@ namespace zim
             }
         }
 
-        // mark top and bottom borders
+        // Get window dimensions for boundary checks
+        auto windowDims = this->pImpl_Panel->window->GetDimensions();
+
+        // mark top and bottom borders separately
         for (int i = 0; i < pad; i++)
         {
             for (int j = 0; j < width; j++)
             {
+                int x = this->pImpl_Panel->position.x + j;
+                int yTop = this->pImpl_Panel->position.y + i;
+                int yBottom = this->pImpl_Panel->position.y + height - 1 - i;
 
-                if (i == 0 && j > 0 && j < width - 1 && j - 1 < title_displayed.length())
+                // draw top border if in bounds
+                if (x >= 0 && x < windowDims.x && yTop >= 0 && yTop < windowDims.y)
                 {
-                    this->pImpl_Panel->window->SetPointDetail(MakeVector2D(this->pImpl_Panel->position.x + j, this->pImpl_Panel->position.y + i), MakePointDetail(title_displayed[j - 1], MakeStyle(this->pImpl_Panel->title.styles.bg_color, this->pImpl_Panel->title.styles.fg_color, this->pImpl_Panel->title.styles.overloadStyle)));
+                    if (i == 0 && j > 0 && j < width - 1 && j - 1 < title_displayed.length())
+                    {
+                        this->pImpl_Panel->window->SetPointDetail(
+                            MakeVector2D(x, yTop),
+                            MakePointDetail(title_displayed[j - 1],
+                                            MakeStyle(this->pImpl_Panel->title.styles.bg_color,
+                                                      this->pImpl_Panel->title.styles.fg_color,
+                                                      this->pImpl_Panel->title.styles.overloadStyle)));
+                    }
+                    else
+                    {
+                        this->pImpl_Panel->window->SetPointDetail(MakeVector2D(x, yTop), this->pImpl_Panel->topBorderChar);
+                    }
                 }
-                else
+
+                // draw bottom border if in bounds
+                if (x >= 0 && x < windowDims.x && yBottom >= 0 && yBottom < windowDims.y)
                 {
-
-                    this->pImpl_Panel->window->SetPointDetail(MakeVector2D(this->pImpl_Panel->position.x + j, this->pImpl_Panel->position.y + i), this->pImpl_Panel->topBorderChar);
+                    this->pImpl_Panel->window->SetPointDetail(MakeVector2D(x, yBottom), this->pImpl_Panel->bottomBorderChar);
                 }
-
-                this->pImpl_Panel->window->SetPointDetail(MakeVector2D(this->pImpl_Panel->position.x + j, this->pImpl_Panel->position.y + height - 1 - i), this->pImpl_Panel->bottomBorderChar);
             }
         }
 
-        if (this->pImpl_Panel->padding > 0)
+        if (pad > 0)
         {
-            this->pImpl_Panel->window->SetPointDetail(MakeVector2D(this->pImpl_Panel->position.x + 0, this->pImpl_Panel->position.y + 0), MakePointDetail(this->pImpl_Panel->topLeftBorderChar.ch, this->pImpl_Panel->topLeftBorderChar.styles));
+            int corners[4][2] = {
+                {0, 0}, {width - 1, 0}, {0, height - 1}, {width - 1, height - 1}};
+            std::vector<PointDetail> cornerChars = {
+                this->pImpl_Panel->topLeftBorderChar,
+                this->pImpl_Panel->topRightBorderChar,
+                this->pImpl_Panel->bottomLeftBorderChar,
+                this->pImpl_Panel->bottomRightBorderChar};
 
-            this->pImpl_Panel->window->SetPointDetail(MakeVector2D(this->pImpl_Panel->position.x + width - 1, this->pImpl_Panel->position.y + 0), MakePointDetail(this->pImpl_Panel->topRightBorderChar.ch, this->pImpl_Panel->topRightBorderChar.styles));
+            int idx = 0;
+            for (auto &corner : corners)
+            {
+                int x = this->pImpl_Panel->position.x + corner[0];
+                int y = this->pImpl_Panel->position.y + corner[1];
 
-            this->pImpl_Panel->window->SetPointDetail(MakeVector2D(this->pImpl_Panel->position.x + 0, this->pImpl_Panel->position.y + height - 1 - 0), MakePointDetail(this->pImpl_Panel->bottomLeftBorderChar.ch, this->pImpl_Panel->bottomLeftBorderChar.styles));
-
-            this->pImpl_Panel->window->SetPointDetail(MakeVector2D(this->pImpl_Panel->position.x + width - 1, this->pImpl_Panel->position.y + height - 1 - 0), MakePointDetail(this->pImpl_Panel->bottomRightBorderChar.ch, this->pImpl_Panel->bottomRightBorderChar.styles));
+                if (x >= 0 && x < windowDims.x && y >= 0 && y < windowDims.y)
+                {
+                    this->pImpl_Panel->window->SetPointDetail(MakeVector2D(x, y), cornerChars[idx]);
+                }
+                idx++;
+            }
         }
+
         // mark left and right borders
         for (int i = pad; i < height - pad; i++)
         {
             for (int j = 0; j < pad; j++)
             {
-                // this->pImpl_Panel->dirtyPositions.insert({j, i});
+                int xLeft = this->pImpl_Panel->position.x + j;
+                int xRight = this->pImpl_Panel->position.x + width - 1 - j;
+                int y = this->pImpl_Panel->position.y + i;
 
-                this->pImpl_Panel->window->SetPointDetail(MakeVector2D(this->pImpl_Panel->position.x + j, this->pImpl_Panel->position.y + i), this->pImpl_Panel->leftBorderChar);
+                if (xLeft >= 0 && xLeft < windowDims.x && y >= 0 && y < windowDims.y)
+                    this->pImpl_Panel->window->SetPointDetail(MakeVector2D(xLeft, y), this->pImpl_Panel->leftBorderChar);
 
-                // this->pImpl_Panel->dirtyPositions.insert({width - 1 - j, i});
-
-                this->pImpl_Panel->window->SetPointDetail(MakeVector2D(this->pImpl_Panel->position.x + width - 1 - j, this->pImpl_Panel->position.y + i), this->pImpl_Panel->rightBorderChar);
+                if (xRight >= 0 && xRight < windowDims.x && y >= 0 && y < windowDims.y)
+                    this->pImpl_Panel->window->SetPointDetail(MakeVector2D(xRight, y), this->pImpl_Panel->rightBorderChar);
             }
         }
     }
@@ -244,13 +274,13 @@ namespace zim
         this->pImpl_Panel->leftBorderChar = MakePointDetail('|', MakeStyle(MakeColor(0, 0, 0), MakeColor(128, 128, 128), OverloadStyle::None));
         this->pImpl_Panel->rightBorderChar = MakePointDetail('|', MakeStyle(MakeColor(0, 0, 0), MakeColor(128, 128, 128), OverloadStyle::None));
 
-        this->pImpl_Panel->topLeftBorderChar=MakePointDetail('+',MakeStyle(MakeColor(0, 0, 0), MakeColor(128, 128, 128), OverloadStyle::None));
-        
-        this->pImpl_Panel->topRightBorderChar=MakePointDetail('+',MakeStyle(MakeColor(0, 0, 0), MakeColor(128, 128, 128), OverloadStyle::None));
-        
-        this->pImpl_Panel->bottomLeftBorderChar=MakePointDetail('+',MakeStyle(MakeColor(0, 0, 0), MakeColor(128, 128, 128), OverloadStyle::None));
-        
-        this->pImpl_Panel->bottomRightBorderChar=MakePointDetail('+',MakeStyle(MakeColor(0, 0, 0), MakeColor(128, 128, 128), OverloadStyle::None));
+        this->pImpl_Panel->topLeftBorderChar = MakePointDetail('+', MakeStyle(MakeColor(0, 0, 0), MakeColor(128, 128, 128), OverloadStyle::None));
+
+        this->pImpl_Panel->topRightBorderChar = MakePointDetail('+', MakeStyle(MakeColor(0, 0, 0), MakeColor(128, 128, 128), OverloadStyle::None));
+
+        this->pImpl_Panel->bottomLeftBorderChar = MakePointDetail('+', MakeStyle(MakeColor(0, 0, 0), MakeColor(128, 128, 128), OverloadStyle::None));
+
+        this->pImpl_Panel->bottomRightBorderChar = MakePointDetail('+', MakeStyle(MakeColor(0, 0, 0), MakeColor(128, 128, 128), OverloadStyle::None));
 
         this->pImpl_Panel->buffer_bg_color = MakeColor(0, 0, 0);
         this->pImpl_Panel->buffer_fg_color = MakeColor(255, 255, 255);
@@ -418,7 +448,7 @@ namespace zim
     {
         // Color &oldColor = this->pImpl_Panel->border_bg_color;
 
-        Impl_Panel* panel = this->pImpl_Panel;
+        Impl_Panel *panel = this->pImpl_Panel;
         panel->topBorderChar.styles.bg_color = color;
         panel->bottomBorderChar.styles.bg_color = color;
         panel->leftBorderChar.styles.bg_color = color;
@@ -456,8 +486,7 @@ namespace zim
         // // this->MarkBorderDirty();
         // // }
 
-
-        Impl_Panel* panel = this->pImpl_Panel;
+        Impl_Panel *panel = this->pImpl_Panel;
 
         panel->topBorderChar.styles.fg_color = color;
         panel->bottomBorderChar.styles.fg_color = color;
@@ -535,43 +564,42 @@ namespace zim
         return this->pImpl_Panel->buffer_height;
     }
 
-
-    PointDetail& Panel::TopBorderChar()
+    PointDetail &Panel::TopBorderChar()
     {
         return this->pImpl_Panel->topBorderChar;
     }
 
-    PointDetail& Panel::BottomBorderChar()
+    PointDetail &Panel::BottomBorderChar()
     {
         return this->pImpl_Panel->bottomBorderChar;
     }
 
-    PointDetail& Panel::LeftBorderChar()
+    PointDetail &Panel::LeftBorderChar()
     {
         return this->pImpl_Panel->leftBorderChar;
     }
 
-    PointDetail& Panel::RightBorderChar()
+    PointDetail &Panel::RightBorderChar()
     {
         return this->pImpl_Panel->rightBorderChar;
     }
 
-    PointDetail& Panel::TopLeftBorderChar()
+    PointDetail &Panel::TopLeftBorderChar()
     {
         return this->pImpl_Panel->topLeftBorderChar;
     }
 
-    PointDetail& Panel::TopRightBorderChar()
+    PointDetail &Panel::TopRightBorderChar()
     {
         return this->pImpl_Panel->topRightBorderChar;
     }
 
-    PointDetail& Panel::BottomLeftBorderChar()
+    PointDetail &Panel::BottomLeftBorderChar()
     {
         return this->pImpl_Panel->bottomLeftBorderChar;
     }
 
-    PointDetail& Panel::BottomRightBorderChar()
+    PointDetail &Panel::BottomRightBorderChar()
     {
         return this->pImpl_Panel->bottomRightBorderChar;
     }

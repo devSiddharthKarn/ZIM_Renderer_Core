@@ -8,10 +8,10 @@ int main(){
 
     Element el;
     
-    el.DefineLayoutHandler([&](Element& Parent,Element& This,Element& document){
-        This.Position()=MakeVector2D(10,10);
-        This.Dimension()=MakeVector2D(20,5);
-    });
+    // el.DefineLayoutHandler([&](Element& Parent,Element& This,Element& document){
+    //     This.Position()=MakeVector2D(-5,10);
+    //     This.Dimension()=MakeVector2D(20,5);
+    // });
 
     el.DefineEventListener([&](EventImage& eventImage,Element& This,Element& document){
         if(eventImage.mouseEvent.keyPressed==MouseKey::Left){
@@ -30,6 +30,31 @@ int main(){
                 This.GetPanel().SetBorderFGColor(MakeColor(0,255,0));
 
             }
+        }
+
+        This.Dimension()=MakeVector2D(20,5);
+
+        if(eventImage.keyboardEvent.keys.IsEmpty()==Logic::False){
+
+            KeyState keyState=eventImage.keyboardEvent.keys.Get();
+
+            while(keyState.key!=KeyboardKey::None){
+                if(keyState.key==KeyboardKey::a){
+                    el.Position()=MakeVector2D(el.Position().x-1,el.Position().y);
+                }else if(keyState.key==KeyboardKey::d){
+                    el.Position()=MakeVector2D(el.Position().x+1,el.Position().y);
+
+                }else if(keyState.key==KeyboardKey::w){
+                    el.Position()=MakeVector2D(el.Position().x,el.Position().y-1);
+
+                }else if(keyState.key==KeyboardKey::s){
+                    el.Position()=MakeVector2D(el.Position().x,el.Position().y+1);
+
+                }
+
+                keyState=eventImage.keyboardEvent.keys.Get();
+            }
+        
         }
     });
 
